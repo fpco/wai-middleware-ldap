@@ -1,0 +1,45 @@
+name:                wai-middleware-ldap
+version:             0.1.0.0
+synopsis:            LDAP Authentication middleware that secures WAI application
+description:         See README
+homepage:            https://gitlab.e1c.net/FPC/wai-middleware-ldap
+license:             BSD3
+license-file:        LICENSE
+author:              Alexey Kuleshevich
+maintainer:          alexey@fpcomplete.com
+copyright:           2017 Everyone counts
+category:            Web
+build-type:          Simple
+extra-doc-files:     README.md CHANGELOG.md
+cabal-version:       >=1.10
+
+library
+  hs-source-dirs:      src
+  exposed-modules:     Network.Wai.Middleware.Auth.LDAP
+  other-modules:       Paths_wai_middleware_ldap
+  build-depends:       LDAP
+                     , aeson
+                     , base >= 4.7 && < 5
+                     , blaze-html
+                     , bytestring
+                     , http-types
+                     , shakespeare
+                     , text
+                     , wai
+                     , wai-middleware-auth
+  default-language:    Haskell2010
+
+executable wai-ldap
+  hs-source-dirs:      app
+  main-is:             Main.hs
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  build-depends:       base
+                     , optparse-simple
+                     , wai-middleware-auth
+                     , wai-middleware-ldap
+                     , warp
+  default-language:    Haskell2010
+
+source-repository head
+  type:     git
+  location: https://gitlab.e1c.net/FPC/wai-middleware-ldap

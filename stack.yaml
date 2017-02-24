@@ -1,0 +1,8 @@
+resolver: lts-8.2
+packages:
+- '.'
+extra-deps:
+  - LDAP-0.6.11
+  - wai-middleware-auth-0.1.1.0
+flags: {}
+extra-package-dbs: []
