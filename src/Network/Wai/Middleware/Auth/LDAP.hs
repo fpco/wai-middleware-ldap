@@ -1,27 +1,35 @@
-{-# LANGUAGE BangPatterns      #-}
-{-# LANGUAGE NamedFieldPuns    #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes       #-}
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE BangPatterns        #-}
+{-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE QuasiQuotes         #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Network.Wai.Middleware.Auth.LDAP
   ( LDAPProvider(..)
+  , LDAPAuth(..)
   , ldapParser
   , waiMiddlewareLDAPVersion
   ) where
-
+import           Control.Exception                    (catch)
 import           Control.Monad                        (fail, when)
 import           Data.Aeson
 import qualified Data.ByteString.Builder              as B
 import qualified Data.ByteString.Char8                as S8
+import           Data.Foldable
 import           Data.Foldable                        (foldl')
+import qualified Data.HashMap.Strict                  as HM
 import           Data.Proxy                           (Proxy (..))
 import qualified Data.Text                            as T
 import           Data.Version                         (Version)
 import           LDAP
 import           Network.HTTP.Types                   (status200, status303,
-                                                       status404, status501)
-import           Network.Wai                          (responseBuilder)
+                                                       status404, status405,
+                                                       status501)
+import           Network.HTTP.Types.Method
+import           Network.Wai                          (requestMethod,
+                                                       responseBuilder)
 import           Network.Wai.Middleware.Auth.Provider
+import           Network.Wai.Parse
 import qualified Paths_wai_middleware_ldap            as Paths
 import           Text.Blaze.Html.Renderer.Utf8        (renderHtmlBuilder)
 import           Text.Hamlet                          (Render, hamlet)
@@ -32,12 +40,17 @@ import           Text.Hamlet                          (Render, hamlet)
 waiMiddlewareLDAPVersion :: Version
 waiMiddlewareLDAPVersion = Paths.version
 
+
+-- | LDAP Authentication settings
+--
+-- @since 0.1.0
 data LDAPAuth = LDAPAuth
-  { ldapUrl            :: String
-  , ldapBindDN         :: String
-  , ldapBindDNPassword :: String
-  , ldapBaseUserDN     :: Maybe String
-  , ldapScope          :: LDAPScope
+  { laHost           :: String
+  , laPort           :: LDAPInt
+  , laBindDN         :: String
+  , laBindDNPassword :: String
+  , laBaseUserDN     :: Maybe String
+  , laScope          :: LDAPScope
   }
 
 
@@ -71,81 +84,168 @@ ldapUserIdentity (LDAPEmail email) = S8.pack email
 
 data LDAPProvider = LDAPProvider
   { ldapProviderInfo :: ProviderInfo
+  , ldapDebug        :: Bool
   , ldapServers      :: [LDAPAuth]
   }
 
 instance FromJSON LDAPProvider where
-  parseJSON = withObject "LDAP Provider Object" $ \ obj -> do
-    ldapProviderInfo <- obj .: "provider_info"
-    ldapServers <- obj .: "servers"
-    when (null ldapServers) $ fail "LDAP server list is empty"
-    return $ LDAPProvider {..}
+  parseJSON =
+    withObject "LDAP Provider Object" $ \obj -> do
+      ldapProviderInfo <-
+        obj .:? "provider_info" .!=
+        ProviderInfo
+        { providerTitle = "LDAP"
+        , providerLogoUrl =
+            "https://pyrmin.io/gitlab/uploads/project/avatar/98/icon-ldap-big.png"
+        , providerDescr = "Authentication using LDAP"
+        }
+      ldapServers <- obj .: "servers"
+      ldapDebug <- obj .:? "debug" .!= False
+      when (null ldapServers) $ fail "LDAP server list is empty"
+      return $ LDAPProvider {..}
 
 
 data LoginError
   = BindFail -- ^ Initial bind failed
   | UserNotFound -- ^ User with such username or email wasn't found
   | IncorrectPassword -- ^ Password mismatch.
+  | OtherError String -- ^ Useful for debugging
+  deriving (Show)
 
 
 instance FromJSON LDAPAuth where
-
-  parseJSON = withObject "LDAP Auth Object" $ \ obj -> do
-    ldapUrl <- obj .: "url"
-    ldapBindDN <- obj .: "bind_dn"
-    ldapBindDNPassword <- obj .: "bind_dn_password"
-    ldapBaseUserDN <- obj .:? "base_user_dn"
-    scope <- obj .:? "scope" .!= Nothing
-    ldapScope <- case (scope :: Maybe String) of
-      Nothing         -> return LdapScopeDefault
-      Just "default"  -> return LdapScopeDefault
-      Just "base"     -> return LdapScopeBase
-      Just "onelevel" -> return LdapScopeOnelevel
-      Just "subtree"  -> return LdapScopeSubtree
-      Just unknown    -> fail $ "Unknown scope: " ++ unknown
-    return LDAPAuth {..}
+  parseJSON =
+    withObject "LDAP Auth Object" $ \obj -> do
+      laHost <- obj .: "host"
+      laPort <-
+        (fmap (fromIntegral :: Int -> LDAPInt) <$> (obj .:? "port")) .!=
+        ldapPort
+      laBindDN <- obj .: "bind_dn"
+      laBindDNPassword <- obj .: "bind_dn_password"
+      laBaseUserDN <- obj .:? "base_user_dn"
+      scope <- obj .:? "scope" .!= Nothing
+      laScope <-
+        case (scope :: Maybe String) of
+          Nothing -> return LdapScopeDefault
+          Just "default" -> return LdapScopeDefault
+          Just "base" -> return LdapScopeBase
+          Just "onelevel" -> return LdapScopeOnelevel
+          Just "subtree" -> return LdapScopeSubtree
+          Just unknown -> fail $ "Unknown scope: " ++ unknown
+      return LDAPAuth {..}
 
 
 getUserQuery :: LDAPUser -> String
-getUserQuery (LDAPUserID uid)  = "uid=" ++ (escapeSpecialChars uid)
-getUserQuery (LDAPEmail email) = "email=" ++ (escapeSpecialChars email)
+getUserQuery (LDAPUserID uid)  = "uid=" ++ escapeSpecialChars uid
+getUserQuery (LDAPEmail email) = "email=" ++ escapeSpecialChars email
 
-loginLDAP :: LDAPAuth -- ^ LDAP provider
+
+-- | Perform authentication against an LDAP server.
+loginLDAP :: Bool -- ^ Debug mode. If True will produce more descriptive error
+                  -- messages.
+          -> LDAPAuth -- ^ LDAP provider
           -> LDAPUser -- ^ User query
           -> String -- ^ User password
-          -> IO (Either LoginError LDAPUser)
-loginLDAP LDAPAuth {..} user userPassword = do
-  ldapObj <- ldapInitialize ldapUrl
-  handleLDAP (const $ return $ Left BindFail) $ do
-    ldapSimpleBind ldapObj ldapBindDN ldapBindDNPassword
-    entries <-
-      ldapSearch
-        ldapObj
-        ldapBaseUserDN
-        ldapScope
-        (Just $ getUserQuery user)
-        LDAPAllUserAttrs
-        True
-    loginUser entries
-    return $ Left IncorrectPassword
+          -> IO (Either LoginError UserIdentity)
+loginLDAP debug LDAPAuth {..} user userPassword = do
+  ldapObj <- ldapInit laHost laPort
+  handleLDAP
+    (\e ->
+       return $
+       Left $
+       if debug
+         then OtherError $ "Initial bind: " ++ show e
+         else BindFail)
+    (do ldapSimpleBind ldapObj laBindDN laBindDNPassword
+        entries <-
+          ldapSearch
+            ldapObj
+            laBaseUserDN
+            laScope
+            (Just $ getUserQuery user)
+            LDAPAllUserAttrs
+            True
+        loginUser entries)
   where
     loginUser [] = return $ Left UserNotFound
     loginUser [LDAPEntry userDN _] = do
-      userLdapObj <- ldapInitialize ldapUrl
-      handleLDAP (const $ return $ Left IncorrectPassword) $ do
-        ldapSimpleBind userLdapObj userDN userPassword
-        return $ Right user
-    loginUser _ = return $ Left UserNotFound
-
-
+      userLdapObj <- ldapInit laHost laPort
+      handleLDAP
+        (\e ->
+           return $
+           Left $
+           if debug
+             then OtherError $ "User <" ++ userDN ++ "> bind: " ++ show e
+             else IncorrectPassword)
+        (do ldapSimpleBind userLdapObj userDN userPassword
+            return $ Right $ ldapUserIdentity user)
+    loginUser es =
+      return $
+      Left $
+      if debug
+        then OtherError $ "Too many users found: " ++ show es
+        else UserNotFound
 
 
 instance AuthProvider LDAPProvider where
   getProviderName _ = "ldap"
   getProviderInfo = ldapProviderInfo
-  handleLogin LDAPProvider {ldapServers} req suffix renderUrl onSuccess onFailure = do
-    return $ responseBuilder status200 [] $ loginTemplate Nothing renderUrl
+  handleLogin LDAPProvider {ldapDebug, ldapServers} req suffix renderUrl onSuccess onFailure =
+    case requestMethod req of
+      m
+        | m == methodGet ->
+          return $
+          responseBuilder status200 [] $ loginTemplate Nothing renderUrl
+      m
+        | m == methodPost -> do
+          (params, _) <- parseRequestBodyEx loginFormBodyOptions lbsBackEnd req
+          let paramsHM = HM.filter (not . S8.null) $ HM.fromList params
+          let withError errMsg =
+                responseBuilder status200 [] $
+                loginTemplate (Just errMsg) renderUrl
+          case HM.lookup "username" paramsHM of
+            Nothing -> return $ withError "Username field is blank."
+            Just username ->
+              case HM.lookup "password" paramsHM of
+                Nothing -> return $ withError "Password field is blank."
+                Just password ->
+                  let login [] resp = return resp
+                      login (ldapServer:rest) resp = do
+                        mres <-
+                          catch
+                            (loginLDAP
+                               ldapDebug
+                               ldapServer
+                               (LDAPUserID $ S8.unpack username)
+                               (S8.unpack password))
+                            (\(e :: IOError) ->
+                               return $
+                               Left
+                                 (if ldapDebug
+                                    then OtherError $ show e
+                                    else BindFail))
+                        case mres of
+                          Right userId -> onSuccess userId
+                          Left BindFail ->
+                            login
+                              rest
+                              (withError "Unable to connect to an LDAP servers.")
+                          Left _ | not ldapDebug ->
+                            login
+                              rest
+                              (withError "Incorrect username or password.")
+                          Left err ->
+                            login rest (withError $ T.pack $ show err)
+                  in login ldapServers (withError "No LDAP servers available.")
+      _ -> onFailure status405 "Method Not Allowed"
 
+
+
+-- | Request body options with disabled file uploading.
+loginFormBodyOptions :: ParseRequestBodyOptions
+loginFormBodyOptions =
+  setMaxRequestFileSize 0 $
+  setMaxRequestNumFiles 0 defaultParseRequestBodyOptions
 
 
 loginTemplate :: Maybe T.Text
@@ -207,7 +307,6 @@ $doctype 5
         <div class="alert alert-block alert-danger">
           #{errMsg}
       <form name="login_form" method="post" action="">
-        <input type="hidden" name="csrftoken" value="8GAZ7S4b4Q1lDGm6jF9fr04KCUkAj3KM">
         <div .form-group>
           <label for="id_username">
             Username *

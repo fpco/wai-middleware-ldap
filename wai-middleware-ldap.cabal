@@ -25,7 +25,9 @@ library
                      , http-types
                      , shakespeare
                      , text
+                     , unordered-containers
                      , wai
+                     , wai-extra   >= 3.0.16
                      , wai-middleware-auth
   default-language:    Haskell2010
 
