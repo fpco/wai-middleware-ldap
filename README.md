@@ -13,7 +13,7 @@ Then install using stack:
 ```bash
 $ cd wai-middleware-ldap
 $ stack install
-[...]
+...
 Copied executables to /home/user/.local/bin:
 - wai-ldap
 ```
@@ -38,13 +38,23 @@ file_server:
   add_trailing_slash: true
 providers:
   ldap:
-    servers:
-      - host: "localhost"
-        bind_dn: "cn=admin,dc=example,dc=com"
-        bind_dn_password: "password"
-        base_user_dn: "dc=example,dc=com"
-        scope: "subtree"
-        filter: "(&(objectClass=user)(uidNumber=*)(unixHomeDirectory=*))"
+    debug: true # should be ommitted or false in production
+    bind_dn: "BIND\\USERNAME"
+    bind_dn_password: "Zm9vYmFy"
+    base_user_dn: "dc=ldap,dc=example,dc=com"
+    scope: "subtree"
+    filter: "(&(objectClass=user)(uidNumber=*)(unixHomeDirectory=*))"
+    user_search_key: "mail" # can be used to use email for username, skip otherwise.
+    urls:
+      - "ldaps://ldap01.example.com:636"
+      - "ldaps://ldap02.example.com:636"
+```
+
+Bind password is in base64 encoded form. Example on how to encode:
+
+```bash
+$ echo -n "foobar" | base64
+Zm9vYmFy
 ```
 
 ## Execute
@@ -56,7 +66,7 @@ Listening on port 3000
 
 ## Caveats
 
-In case LDAP server has a SSL sertificate that is not signed by a known CA,
+In case LDAP server has a SSL certificate that is not signed by a known CA,
 that CA certificate needs to be either:
 
 1. Installed globally on system:
@@ -72,8 +82,13 @@ $ sudo update-ca-certificates
 $ env LDAPTLS_CACERT=custom-ca.crt wai-ldap --config=ldap-config.yaml
 ```
 
-In order to get servers CA certificate:
+In order to get server CA certificate:
 
 ```bash
-$ openssl s_client -showcerts -connect ldap.server.com:636
+$ openssl s_client -showcerts -connect ldap01.example.com:636
+...
+-----BEGIN CERTIFICATE-----
+<certificate>
+-----END CERTIFICATE-----
+...
 ```
