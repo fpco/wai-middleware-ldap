@@ -44,6 +44,7 @@ providers:
         bind_dn_password: "password"
         base_user_dn: "dc=example,dc=com"
         scope: "subtree"
+        filter: "(&(objectClass=user)(uidNumber=*)(unixHomeDirectory=*))"
 ```
 
 ## Execute
@@ -53,3 +54,26 @@ $ wai-ldap --config-file /path/to/ldap-config.yaml
 Listening on port 3000
 ```
 
+## Caveats
+
+In case LDAP server has a SSL sertificate that is not signed by a known CA,
+that CA certificate needs to be either:
+
+1. Installed globally on system:
+
+```bash
+$ sudo cp ca-custom.crt /usr/local/share/ca-certificates/ca-custom.crt
+$ sudo update-ca-certificates
+```
+
+2. Or supplied through an environment variable:
+
+```bash
+$ env LDAPTLS_CACERT=custom-ca.crt wai-ldap --config=ldap-config.yaml
+```
+
+In order to get servers CA certificate:
+
+```bash
+$ openssl s_client -showcerts -connect ldap.server.com:636
+```

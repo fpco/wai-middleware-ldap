@@ -20,6 +20,7 @@ library
   build-depends:       LDAP
                      , aeson
                      , base >= 4.7 && < 5
+                     , base64-bytestring
                      , blaze-html
                      , bytestring
                      , http-types
@@ -29,6 +30,7 @@ library
                      , wai
                      , wai-extra   >= 3.0.16
                      , wai-middleware-auth
+  ghc-options:         -Wall
   default-language:    Haskell2010
 
 executable wai-ldap
