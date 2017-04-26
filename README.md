@@ -1,4 +1,4 @@
-# wai-middlware-ldap
+# wai-middleware-ldap
 
 ## Install
 
