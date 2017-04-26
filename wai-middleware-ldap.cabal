@@ -2,12 +2,12 @@ name:                wai-middleware-ldap
 version:             0.1.0.0
 synopsis:            LDAP Authentication middleware that secures WAI application
 description:         See README
-homepage:            https://gitlab.e1c.net/FPC/wai-middleware-ldap
+homepage:            https://github.com/fpco/wai-middleware-ldap
 license:             BSD3
 license-file:        LICENSE
 author:              Alexey Kuleshevich
 maintainer:          alexey@fpcomplete.com
-copyright:           2017 Everyone counts
+copyright:           2017 FP Complete
 category:            Web
 build-type:          Simple
 extra-doc-files:     README.md CHANGELOG.md
@@ -46,4 +46,4 @@ executable wai-ldap
 
 source-repository head
   type:     git
-  location: https://gitlab.e1c.net/FPC/wai-middleware-ldap
+  location: https://github.com/fpco/wai-middleware-ldap

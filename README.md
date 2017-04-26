@@ -44,7 +44,7 @@ providers:
     base_user_dn: "dc=ldap,dc=example,dc=com"
     scope: "subtree"
     filter: "(&(objectClass=user)(uidNumber=*)(unixHomeDirectory=*))"
-    user_search_key: "mail" # can be used to use email for username, skip otherwise.
+    user_search_key: "mail" # to use 'email' as a username, skip otherwise.
     urls:
       - "ldaps://ldap01.example.com:636"
       - "ldaps://ldap02.example.com:636"
