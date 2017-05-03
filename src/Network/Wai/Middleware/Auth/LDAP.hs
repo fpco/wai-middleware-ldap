@@ -9,10 +9,10 @@ module Network.Wai.Middleware.Auth.LDAP
   , ldapParser
   , waiMiddlewareLDAPVersion
   ) where
+
 import           Control.Exception                    (catch)
 import           Control.Monad                        (fail, when)
 import           Data.Aeson
-import qualified Data.ByteString.Base64               as B64
 import qualified Data.ByteString.Builder              as B
 import qualified Data.ByteString.Char8                as S8
 import           Data.Foldable                        (foldl')
@@ -21,7 +21,6 @@ import           Data.List                            (intercalate)
 import           Data.Maybe                           (fromMaybe)
 import           Data.Proxy                           (Proxy (..))
 import qualified Data.Text                            as T
-import           Data.Text.Encoding                   (encodeUtf8)
 import           Data.Version                         (Version)
 import           Foreign.ForeignPtr                   (finalizeForeignPtr)
 import           LDAP
@@ -50,15 +49,15 @@ waiMiddlewareLDAPVersion = Paths.version
 --
 -- @since 0.1.0
 data LDAPAuth = LDAPAuth
-  { laUrls           :: [String]
-  , laBindDN         :: String
-  , laBindDNPassword :: String
-  , laBaseUserDN     :: Maybe String
-  , laUserSearchKey  :: Maybe String
-  , laScope          :: LDAPScope
-  , laFilter         :: Maybe String
-  , laProviderInfo   :: ProviderInfo
-  , laDebug          :: Bool
+  { laUrls          :: [String]
+  , laBindDN        :: String
+  , laBindPassword  :: String
+  , laBaseDN        :: Maybe String
+  , laUserSearchKey :: Maybe String
+  , laScope         :: LDAPScope
+  , laFilter        :: Maybe String
+  , laProviderInfo  :: ProviderInfo
+  , laDebug         :: Bool
   }
 
 
@@ -109,12 +108,8 @@ instance FromJSON LDAPAuth where
       laUrls <- obj .: "urls"
       when (null laUrls) $ fail "LDAP urls list is empty."
       laBindDN <- obj .: "bind_dn"
-      password <- obj .: "bind_dn_password"
-      laBindDNPassword <-
-        case B64.decode $ encodeUtf8 password of
-          Left err     -> fail err
-          Right passwd -> return $ S8.unpack passwd
-      laBaseUserDN <- obj .:? "base_user_dn"
+      laBindPassword <- obj .: "bind_password"
+      laBaseDN <- obj .:? "base_dn"
       laUserSearchKey <- obj .:? "user_search_key"
       scope <- obj .:? "scope" .!= Nothing
       laScope <-
@@ -147,7 +142,7 @@ loginLDAP (LDAPAuth {..}) (LDAPLogin {..}) = do
       entries <-
         ldapSearch
           ldapObj
-          laBaseUserDN
+          laBaseDN
           laScope
           (Just $ getQuery laFilter)
           LDAPNoAttrs
@@ -172,7 +167,7 @@ loginLDAP (LDAPAuth {..}) (LDAPLogin {..}) = do
       ldapObj <- ldapInitialize url
       handleLDAP
         (\e -> finalizeForeignPtr ldapObj >> bindFirst rest (e : acc))
-        (do ldapSimpleBind ldapObj laBindDN laBindDNPassword
+        (do ldapSimpleBind ldapObj laBindDN laBindPassword
             return $ Right (url, ldapObj))
     bindFirst _ acc = return $ Left $ reverse acc
     loginUser url (LDAPEntry userDN _) = do

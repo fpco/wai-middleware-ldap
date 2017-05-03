@@ -1,0 +1,17 @@
+app_port: 3000
+cookie_age: 6000
+secret_key: "aYfV0jkby6Wt9LZSy2im+9ck3E1cDDKENCR4AEvNjZYLUV2u0ipSgnTO2zoeUE0fMiI3AFYG11cTsqgx3kw70NXJaioteih44THqVzvUJcZanozUlXBpX1Sts2Kg7DS3"
+file_server:
+  root_folder: "/website"
+  redirect_to_index: true
+  add_trailing_slash: true
+providers:
+  ldap:
+    bind_dn: "cn=admin,dc=example,dc=org"
+    bind_password: "admin"
+    base_dn: "dc=example,dc=org"
+    scope: "subtree"
+    filter: "(&(objectClass=account)(uidNumber=*)(homeDirectory=*))"
+    user_search_key: "uid"
+    urls:
+      - "_env:LDAP_URI:'ldap://localhost'"

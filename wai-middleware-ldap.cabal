@@ -20,7 +20,6 @@ library
   build-depends:       LDAP
                      , aeson
                      , base >= 4.7 && < 5
-                     , base64-bytestring
                      , blaze-html
                      , bytestring
                      , http-types
@@ -36,7 +35,7 @@ library
 executable wai-ldap
   hs-source-dirs:      app
   main-is:             Main.hs
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  ghc-options:         -O2 -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
                      , optparse-simple
                      , wai-middleware-auth

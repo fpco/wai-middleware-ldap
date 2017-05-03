@@ -28,8 +28,8 @@ main = do
   (BasicOptions {..}, ()) <-
     simpleOptions
       $(simpleVersion waiMiddlewareLDAPVersion)
-      "wai-ldap - LDAP Authentication server"
-      "Run a protected file server or reverse proxy."
+      "wai-ldap - LDAP Authentication service"
+      "Run an LDAP protected file server or HTTP reverse proxy."
       basicSettingsParser
       empty
   authConfig <- readAuthConfig configFile
