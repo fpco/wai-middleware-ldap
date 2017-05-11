@@ -13,7 +13,7 @@ show_help() {
   echo "  --push            Push generated image to docker hub."
   echo "  --no-cache        Remove any previously produced artifacts or built images."
   echo "  --cleanup         Remove all artifacts (except the built image) once finished."
-  echo "  --pid1-version    Version of fpco/pid1 to use as an entrypoint."
+  echo "  --pid1-version    Version of fpco/pid1 to use as an entrypoint. (default: 0.1.0.1)"
   echo "  --help            Show this help."
   echo
 }
@@ -83,13 +83,6 @@ if [ $NO_BUILD = false ]; then
 
   docker build $NO_CACHE --build-arg PID1_VERSION=$PID1_VERSION --tag fpco/wai-ldap:current .
 
-  # Sanity check and get wai-ldap version for the docker image tag
-  WAI_LDAP_VERSION=$(docker run --rm fpco/wai-ldap wai-ldap --version | cut -d, -f1 | cut -d' ' -f2)
-
-  if [ -z "${WAI_LDAP_VERSION}" ]; then
-    echo "Can not get the version of wai-ldap" >&2
-    exit 1
-  fi
 fi
 
 if [ $TEST = true ]; then
@@ -134,6 +127,13 @@ if [ $TEST = true ]; then
   fi
 fi
 
+# Sanity check and get wai-ldap version for the docker image tag
+WAI_LDAP_VERSION=$(docker run --rm fpco/wai-ldap:current wai-ldap --version | cut -d, -f1 | cut -d' ' -f2)
+
+if [ -z "${WAI_LDAP_VERSION}" ]; then
+  echo "Can not get the version of wai-ldap" >&2
+  exit 1
+fi
 
 if [ $PUSH = true ]; then
   docker tag fpco/wai-ldap:current fpco/wai-ldap:latest

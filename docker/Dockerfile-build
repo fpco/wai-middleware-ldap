@@ -2,18 +2,21 @@ FROM ubuntu:16.04
 MAINTAINER Alexey Kuleshevich <alexey@fpcomplete.com>
 ARG PID1_VERSION=0.1.0.1
 VOLUME /src
-RUN apt-get update
-RUN apt-get install -y libldap2-dev libsasl2-dev curl git build-essential xz-utils libgmp-dev zlib1g-dev
-
+RUN apt-get update && \
+    apt-get install -y libldap2-dev libsasl2-dev curl git build-essential xz-utils libgmp-dev zlib1g-dev
 # Get latest stack
-RUN curl -L https://www.stackage.org/stack/linux-x86_64-static | tar -xz --wildcards '*/stack' -C stack --strip-components=1
-RUN chmod 755 stack
-RUN mv stack /usr/local/bin/stack
+RUN curl -L https://www.stackage.org/stack/linux-x86_64-static | tar -xz --wildcards '*/stack' -C stack --strip-components=1 && \
+    chmod 755 stack && \
+    mv stack /usr/local/bin/stack
+# COMPRESS WITH UPX
+ADD https://github.com/lalyos/docker-upx/releases/download/v3.91/upx /usr/local/bin/upx
+RUN chmod 755 /usr/local/bin/upx
 
 # Put a correct pid1, so build process can be terminated with Ctrl-C if necessary
-RUN curl -L "https://github.com/fpco/pid1/releases/download/pid1%2F$PID1_VERSION/pid1-$PID1_VERSION-linux-x86_64.tar.gz" | tar -xz -C /usr/local
-RUN chown -R root:root /usr/local/sbin
+RUN curl -L "https://github.com/fpco/pid1/releases/download/pid1%2F$PID1_VERSION/pid1-$PID1_VERSION-linux-x86_64.tar.gz" | tar -xz -C /usr/local && \
+    chown -R root:root /usr/local/sbin
+
 ENTRYPOINT ["/usr/local/sbin/pid1"]
 
 WORKDIR /src
-CMD ["stack", "--install-ghc", "--allow-different-user", "--stack-root=/src/docker/artifacts/stack-root", "--work-dir=docker/artifacts/stack-work", "--local-bin-path=/src/docker/artifacts/", "install"]
+CMD ["sh", "-c", "stack --install-ghc --allow-different-user --stack-root=/src/docker/artifacts/stack-root --work-dir=docker/artifacts/stack-work --local-bin-path=/src/docker/artifacts/ install && upx --best --ultra-brute /src/docker/artifacts/wai-ldap"]
