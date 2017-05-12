@@ -22,9 +22,15 @@ Make sure above path is in your `$PATH`.
 
 ## Configure
 
-Create a config file in yaml format. To get more info on the file format and
-secret key generation check out
-parent
+Create a config file in yaml format. Generate a new secret key and place it into
+config under `secret_key`:
+
+```
+$ echo $(stack exec -- wai-ldap key -b)
+x1jPsnL5eEp3OsMYD6gRh...
+```
+
+To get more info on the file format check out parent
 [wai-middleware-auth](https://www.stackage.org/package/wai-middleware-auth)
 package. Here is an example config:
 

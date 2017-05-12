@@ -37,6 +37,9 @@ executable wai-ldap
   main-is:             Main.hs
   ghc-options:         -O2 -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
+                     , bytestring
+                     , cereal
+                     , clientsession
                      , optparse-simple
                      , wai-middleware-auth
                      , wai-middleware-ldap

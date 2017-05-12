@@ -2,37 +2,95 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TemplateHaskell   #-}
 module Main where
+import qualified Data.ByteString                           as S
 import           Data.Monoid                               ((<>))
+import           Data.Serialize                            (put, runPut)
 import           Network.Wai.Auth.Executable
 import           Network.Wai.Handler.Warp                  (run)
 import           Network.Wai.Middleware.Auth.LDAP
 import           Options.Applicative.Simple
+import           Web.ClientSession
 
 
-data BasicOptions = BasicOptions
-  { configFile :: FilePath
-  } deriving (Show)
+data BasicOptions
+  = ConfigFile FilePath
+  | KeyFile KeyOptions
 
-basicSettingsParser :: Parser BasicOptions
-basicSettingsParser =
-  BasicOptions <$>
+
+basicSettingsParser :: String -> Parser BasicOptions
+basicSettingsParser version =
+  (ConfigFile <$>
+   strOption
+     (long "config-file" <> short 'c' <> metavar "CONFIG" <>
+      help "File with configuration for the LDAP Auth application.") <*
+   abortOption
+     (InfoMsg version)
+     (long "version" <> short 'v' <> help "Current version.") <*
+   abortOption
+     ShowHelpText
+     (long "help" <> short 'h' <> help "Display this message.")) <|>
+  (subparser
+     (command
+        "key"
+        (info
+           (KeyFile <$> keyOptionsParser)
+           (progDesc
+              ("Command for creating a secret key or converting one into base64 " ++
+               "form, which can then be directly used inside a config file.") <>
+            fullDesc))))
+
+
+data KeyOptions = KeyOptions
+  { keyInput  :: FilePath
+  , keyOutput :: FilePath
+  , keyBase64 :: Bool
+  }
+
+keyOptionsParser :: Parser KeyOptions
+keyOptionsParser =
+  KeyOptions <$>
   strOption
-    (long "config-file" <>
-     short 'c' <>
-     metavar "CONFIG" <>
-     help "File with configuration for the LDAP Auth application.")
+    (long "input-file" <> short 'i' <> metavar "INPUT" <> value "" <>
+     help "Read key from a file, instead of generating a new one.") <*>
+  strOption
+    (long "output-file" <> short 'o' <> metavar "OUTPUT" <> value "" <>
+     help "Write key into a file, instead of stdout. File will be overwritten.") <*>
+  switch
+    (long "base64" <> short 'b' <>
+     help "Produce a key in a base64 encoded form.") <*
+  abortOption
+    ShowHelpText
+    (long "help" <> short 'h' <> help "Display this message.")
+
 
 
 main :: IO ()
 main = do
-  (BasicOptions {..}, ()) <-
-    simpleOptions
-      $(simpleVersion waiMiddlewareLDAPVersion)
-      "wai-ldap - LDAP Authentication service"
-      "Run an LDAP protected file server or HTTP reverse proxy."
-      basicSettingsParser
-      empty
-  authConfig <- readAuthConfig configFile
-  mkMain authConfig [ldapParser] $ \port app -> do
-    putStrLn $ "Listening on port " ++ show port
-    run port app
+  opts <-
+    execParser
+      (info
+         (basicSettingsParser $(simpleVersion waiMiddlewareLDAPVersion))
+         (header "wai-ldap - LDAP Authentication service" <>
+          progDesc "Run an LDAP protected file server or HTTP reverse proxy." <>
+          fullDesc))
+  case opts of
+    ConfigFile configFile -> do
+      authConfig <- readAuthConfig configFile
+      mkMain authConfig [ldapParser] $ \port app -> do
+        putStrLn $ "Listening on port " ++ show port
+        run port app
+    KeyFile (KeyOptions {..}) -> do
+      let key2str =
+            if keyBase64
+              then encodeKey
+              else (runPut . put)
+      key <-
+        key2str <$>
+        if null keyInput
+          then snd <$> randomKey
+          else do
+            keyContent <- S.readFile keyInput
+            either error return (decodeKey keyContent <|> initKey keyContent)
+      if null keyOutput
+        then S.putStr key
+        else S.writeFile keyOutput key
