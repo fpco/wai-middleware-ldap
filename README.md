@@ -2,6 +2,18 @@
 
 ## Install
 
+### Ubuntu binary
+
+Install external dependencies:
+
+```bash
+$ sudo apt-get install -y libldap2-dev libsasl2-dev
+```
+
+Download a binary release from https://github.com/fpco/wai-middleware-ldap/releases
+
+### From source
+
 Install external dependencies:
 
 ```bash
